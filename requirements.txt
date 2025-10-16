@@ -9,4 +9,3 @@ scipy
 xmltodict
 python-dateutil
 surfplot
-git+https://github.com/netneurolab/neuromaps.git

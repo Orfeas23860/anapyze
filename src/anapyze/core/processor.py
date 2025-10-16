@@ -212,7 +212,7 @@ def smooth_images_spm(images_to_smooth, smoothing, mfile_name, spm_path="/Users/
     run_matlab_command(mfile_name)
 
 def cat12_segmentation_crossec(images_to_segment, mfile_name, template_tpm = False, template_volumes = False,
-                               output_vox_size = 1.5, bounding_box = "cat12", surface_processing = 0,
+                               output_vox_size = 1.0, bounding_box = "cat12", surface_processing = 0,
                                spm_path="/Users/jsilva/software/spm12"):
 
     if not template_tpm:

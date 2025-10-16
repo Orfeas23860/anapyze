@@ -1,5 +1,6 @@
 import os
 import subprocess
+
 def dcm_nii_dcm2niix(input_folder: str, output_folder: str, output_filename: str) -> None:
     """
     Converts a dicom folder into a nifti using dcm2niix.
