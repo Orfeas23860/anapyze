@@ -23,7 +23,7 @@ setup(
     package_dir={'': 'src'},
     packages=find_packages(
         where='src',
-        exclude=['pipelines', 'resources', 'examples', '__MACOSX']
+        exclude=['resources', 'examples', '__MACOSX']
     ),
     install_requires=requirements,
     include_package_data=False,  # set to True if you add data files via MANIFEST.in

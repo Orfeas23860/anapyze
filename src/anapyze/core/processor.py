@@ -2,25 +2,56 @@ import nibabel as nib
 import numpy as np
 import subprocess
 import os
+import logging
 from os.path import join, exists
 from concurrent.futures import ThreadPoolExecutor
+from typing import Union, Tuple, List, Dict, Optional
 
 from anapyze.io import spm
 from anapyze.io import cat12
+from anapyze.config import config
+
+logger = logging.getLogger(__name__)
 
 
-def run_matlab_command(mfile, matlab_cmd="/usr/local/MATLAB/R2025a/bin/matlab"):
+def run_matlab_command(mfile: str, matlab_cmd: Optional[str] = None) -> None:
+    """
+    Executes a MATLAB script (.m file) using the configured MATLAB command.
+
+    Args:
+        mfile: Path to the .m file to execute.
+        matlab_cmd: Optional override for the MATLAB command. If None, uses config.matlab_cmd.
+
+    Raises:
+        RuntimeError: If the MATLAB command fails.
+    """
+    if matlab_cmd is None:
+        matlab_cmd = config.matlab_cmd
+
     mfile_path, mfile_name = os.path.split(mfile)
-
-    command = f"{matlab_cmd} -nosplash -sd {mfile_path} -batch {mfile_name[0:-2]}"
     
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    # Remove extension if present for the batch command
+    script_name = os.path.splitext(mfile_name)[0]
 
-    if len(result.stderr) == 0:
-        print(f"Successfully executed {mfile_name}")
-    else:
-        print(result)
-        raise Exception(result.stderr)
+    command = f"{matlab_cmd} -nosplash -sd {mfile_path} -batch {script_name}"
+    
+    logger.info(f"Running MATLAB command: {command}")
+    
+    try:
+        result = subprocess.run(
+            command, 
+            shell=True, 
+            capture_output=True, 
+            text=True,
+            check=True
+        )
+        logger.info(f"Successfully executed {mfile_name}")
+        if result.stdout:
+            logger.debug(f"MATLAB Output: {result.stdout}")
+            
+    except subprocess.CalledProcessError as e:
+        logger.error(f"MATLAB execution failed: {e.stderr}")
+        raise RuntimeError(f"MATLAB execution failed: {e.stderr}") from e
 
 def intensity_normalize_pet_histogram(input_image, template, mask):
     """Normalizes an image using the mode of an intensity histogram.
@@ -173,47 +204,129 @@ def logpow_histogram_matching(reference_img, input_img, alpha: int = 1, beta: in
 
     return final_image
 
-def coregister_spm(reference_nii, input_nii, mfile_name, spm_path="/Users/jsilva/software/spm12"):
+def coregister_spm(
+    reference_nii: str, 
+    input_nii: str, 
+    mfile_name: str, 
+    spm_path: Optional[str] = None
+) -> None:
     """Performs coregistration between two images using SPM."""
+    
+    if spm_path is None:
+        spm_path = config.spm_path
+
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
 
     spm.generate_mfile_coregister(spm_path, mfile_name,
                                   reference_nii, input_nii)
 
     run_matlab_command(mfile_name)
 
-def old_normalize_spm(images_to_norm, template_image, mfile_name, spm_path="/Users/jsilva/software/spm12"):
+def old_normalize_spm(
+    images_to_norm: Union[str, List[str]], 
+    template_image: str, 
+    mfile_name: str, 
+    spm_path: Optional[str] = None
+) -> None:
+
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
 
     spm.generate_mfile_old_normalize(spm_path, mfile_name, images_to_norm, template_image)
 
     run_matlab_command(mfile_name)
 
-def new_normalize_spm(images_to_norm, mfile_name, template_image = False, spm_path = "/Users/jsilva/software/spm12"):
+def new_normalize_spm(
+    images_to_norm: Union[str, List[str]], 
+    mfile_name: str, 
+    template_image: Optional[str] = None, 
+    spm_path: Optional[str] = None
+) -> None:
 
-    if template_image == False:
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
+
+    if template_image is None:
         template_image = join(spm_path, 'tpm', 'TPM.nii')
 
     spm.generate_mfile_new_normalize(spm_path, mfile_name, template_image, images_to_norm)
 
     run_matlab_command(mfile_name)
 
-def old_deformations(images_to_deform, base_image, def_matrix, interpolation, mfile_name, spm_path="/Users/jsilva/software/spm12"):
+def old_deformations(
+    images_to_deform: List[str], 
+    base_image: str, 
+    def_matrix: str, 
+    interpolation: int, 
+    mfile_name: str, 
+    spm_path: Optional[str] = None
+) -> None:
+
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
 
     spm.generate_mfile_old_deformations(spm_path, mfile_name, def_matrix, base_image, images_to_deform, interpolation)
     run_matlab_command(mfile_name)
 
-def new_deformations(images_to_deform,def_matrix,interpolation,mfile_name, spm_path="/Users/jsilva/software/spm12"):
+def new_deformations(
+    images_to_deform: List[str],
+    def_matrix: str,
+    interpolation: int,
+    mfile_name: str, 
+    spm_path: Optional[str] = None
+) -> None:
+
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
 
     spm.generate_mfile_new_deformations(spm_path, mfile_name, def_matrix, images_to_deform, interpolation)
     run_matlab_command(mfile_name)
 
-def smooth_images_spm(images_to_smooth, smoothing, mfile_name, spm_path="/Users/jsilva/software/spm12"):
+def smooth_images_spm(
+    images_to_smooth: List[str], 
+    smoothing: List[float], 
+    mfile_name: str, 
+    spm_path: Optional[str] = None
+) -> None:
+
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
 
     spm.generate_mfile_smooth_imgs(spm_path, mfile_name, images_to_smooth, smoothing)
     run_matlab_command(mfile_name)
 
-def cat12_segmentation_crossec(images_to_segment, mfile_name, template_tpm = False, template_volumes = False,
-                               output_vox_size = 1.0, bounding_box = "cat12", surface_processing = 0,
-                               spm_path="/Users/jsilva/software/spm12"):
+def cat12_segmentation_crossec(
+    images_to_segment: List[str], 
+    mfile_name: str, 
+    template_tpm: Optional[str] = None, 
+    template_volumes: Optional[str] = None,
+    output_vox_size: float = 1.0, 
+    bounding_box: str = "cat12", 
+    surface_processing: int = 0,
+    spm_path: Optional[str] = None
+) -> None:
+
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
 
     if not template_tpm:
         template_tpm = join(spm_path, 'tpm', 'TPM.nii')
@@ -228,9 +341,22 @@ def cat12_segmentation_crossec(images_to_segment, mfile_name, template_tpm = Fal
 
     run_matlab_command(mfile_name)
 
-def cat12_segmentation_longit(images_to_segment, mfile_name, template_tpm = False, template_volumes = False,
-                              output_vox_size = 1.5, bounding_box = "cat12", surface_processing = 0,
-                              spm_path="/Users/jsilva/software/spm12"):
+def cat12_segmentation_longit(
+    images_to_segment: List[str], 
+    mfile_name: str, 
+    template_tpm: Optional[str] = None, 
+    template_volumes: Optional[str] = None,
+    output_vox_size: float = 1.5, 
+    bounding_box: str = "cat12", 
+    surface_processing: int = 0,
+    spm_path: Optional[str] = None
+) -> None:
+
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
 
     if not template_tpm:
         template_tpm = join(spm_path, 'tpm', 'TPM.nii')
@@ -245,39 +371,43 @@ def cat12_segmentation_longit(images_to_segment, mfile_name, template_tpm = Fals
 
     run_matlab_command(mfile_name)
 
-def recon_all_freesurfer(t1_nii, t2_nii=False):
+def recon_all_freesurfer(t1_nii: str, t2_nii: Optional[str] = None) -> None:
 
-    if "FREESURFER_HOME" in os.environ:
-        pass
-    else:
-        raise Exception("FREESURFER_HOME environment variable not set")
+    freesurfer_home = config.freesurfer_home
+    if not freesurfer_home and "FREESURFER_HOME" not in os.environ:
+         raise RuntimeError("FREESURFER_HOME environment variable not set and not in config.")
 
     #directory containing the t1_nii file
     pat_dir = os.path.split(t1_nii)[0]
 
     if exists(t1_nii):
-        os.system(f"recon-all -sd {pat_dir} -i {t1_nii} -s FS_out -all\n")
-    if exists(t1_nii) and exists(t2_nii):
+        cmd = f"recon-all -sd {pat_dir} -i {t1_nii} -s FS_out -all"
+        logger.info(f"Running FreeSurfer command: {cmd}")
+        os.system(cmd)
+    
+    if t2_nii and exists(t1_nii) and exists(t2_nii):
         # TODO : hippocampal subfields
         pass
 
-def recon_all_freesurfer_whole_cohort(cohort_dir, pats: dict, n_parallel: int = 2) -> None:
+def recon_all_freesurfer_whole_cohort(cohort_dir: str, pats: Dict[str, Tuple[str, str]], n_parallel: int = 2) -> None:
 
-    if "FREESURFER_HOME" in os.environ:
-        pass
-    else:
-        raise Exception("FREESURFER_HOME environment variable not set")
+    freesurfer_home = config.freesurfer_home
+    if not freesurfer_home and "FREESURFER_HOME" not in os.environ:
+         raise RuntimeError("FREESURFER_HOME environment variable not set and not in config.")
 
     def process_patient(item: tuple):
 
-        pat, t1_name, t2_name = item
+        pat, (t1_name, t2_name) = item
         pat_dir = join(cohort_dir, pat)
         t1_nii = join(cohort_dir, pat, t1_name)
         t2_nii = join(cohort_dir, pat, t2_name)
 
         if exists(t1_nii):
-            os.system(f"recon-all -sd {pat_dir} -i {t1_nii} -s FS_out -all\n")
-        if exists(t1_nii) and exists(t2_nii):
+            cmd = f"recon-all -sd {pat_dir} -i {t1_nii} -s FS_out -all"
+            logger.info(f"Running FreeSurfer command for {pat}: {cmd}")
+            os.system(cmd)
+            
+        if t2_nii and exists(t1_nii) and exists(t2_nii):
             # TODO : hippocampal subfields
             pass
 
@@ -287,23 +417,24 @@ def recon_all_freesurfer_whole_cohort(cohort_dir, pats: dict, n_parallel: int = 
 
     # TODO: Similar functions for SAMSEG and Synthseg
 
-def synthstrip_skull_striping_freesurfer(img_to_strip: str, out_: str = False, includes_csf = True):
+def synthstrip_skull_striping_freesurfer(img_to_strip: str, out_: Optional[str] = None, includes_csf: bool = True) -> None:
 
-    if "FREESURFER_HOME" in os.environ:
-        pass
-    else:
-        raise Exception("FREESURFER_HOME environment variable not set")
+    freesurfer_home = config.freesurfer_home
+    if not freesurfer_home and "FREESURFER_HOME" not in os.environ:
+         raise RuntimeError("FREESURFER_HOME environment variable not set and not in config.")
 
     if not out_:
         out_path, out_name = os.path.split(img_to_strip)
-        out_: str = join(out_path, 'skull_strip_' + out_name)
+        out_ = join(out_path, 'skull_strip_' + out_name)
 
     csf_flag = ''
     if not includes_csf:
         csf_flag = '--no-csf'
 
     if exists(img_to_strip):
-        os.system(f"mri_synthstrip -i {img_to_strip} -o {out_} {csf_flag}")
+        cmd = f"mri_synthstrip -i {img_to_strip} -o {out_} {csf_flag}"
+        logger.info(f"Running SynthStrip command: {cmd}")
+        os.system(cmd)
 
     else:
-        raise FileExistsError("Input image does not exist")
+        raise FileNotFoundError(f"Input image does not exist: {img_to_strip}")

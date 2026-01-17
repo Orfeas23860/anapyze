@@ -5,25 +5,34 @@ import nibabel as nib
 import shutil
 import subprocess
 import pandas as pd
-import statsmodels.api as sm
+
+import logging
+from typing import List, Union, Optional, Tuple
+
 from anapyze.io import spm
 from anapyze.io import cat12
 from anapyze.core import processor
 from anapyze.core import utils
+from anapyze.config import config
 from scipy.stats import ttest_ind
 
-def run_2sample_ttest_spm(spm_path,save_dir,
-        group1: list,
-        group2: list,
-        group1_ages: list,
-        group2_ages: list,
-        covar2_name = False,
-        group1_covar2 = False,
-        group2_covar2 = False,
-        mask: str = False,
-        contrast_name: str = "contrast",
-        contrast: str = "[1 -1 0]",
-        ):
+logger = logging.getLogger(__name__)
+
+def run_2sample_ttest_spm(
+    save_dir: str,
+    group1: List[str],
+    group2: List[str],
+    group1_ages: List[float],
+    group2_ages: List[float],
+    spm_path: Optional[str] = None,
+    covar2_name: Optional[str] = None,
+    group1_covar2: Optional[List[float]] = None,
+    group2_covar2: Optional[List[float]] = None,
+    mask: Optional[str] = None,
+    contrast_name: str = "contrast",
+    contrast: str = "[1 -1 0]",
+    covar1_name: str = "age"
+) -> None:
     """
     Executes a two-sample voxel-wise t-test in SPM via MATLAB, computes Cohen’s d maps,
     and estimates FDR-corrected thresholds for Cohen’s d.
@@ -89,23 +98,29 @@ def run_2sample_ttest_spm(spm_path,save_dir,
     Cohen’s d threshold (computed via `utils.get_fdr_thresholds_from_spmt`) to the console.
     """
 
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
+
     if exists(save_dir):
         shutil.rmtree(save_dir)
 
     os.makedirs(save_dir)
 
-    print("Creating SPM model....")
+    logger.info("Creating SPM model....")
 
     mfile_model = join(save_dir, "model.m")
 
     spm.generate_mfile_model(spm_path, mfile_model, save_dir, group1, group2,
-                         covar1_name='Age', group1_covar1=group1_ages, group2_covar1=group2_ages,
+                         covar1_name=covar1_name, group1_covar1=group1_ages, group2_covar1=group2_ages,
                          covar2_name=covar2_name, group1_covar2=group1_covar2, group2_covar2=group2_covar2,
                          mask=mask)
 
     processor.run_matlab_command(mfile_model)
 
-    print("Estimating model....")
+    logger.info("Estimating model....")
 
     mfile_estimate = join(save_dir, "estimate.m")
     spm_mat = join(save_dir, "SPM.mat")
@@ -114,7 +129,7 @@ def run_2sample_ttest_spm(spm_path,save_dir,
 
     processor.run_matlab_command(mfile_estimate)
 
-    print("Calculating results....")
+    logger.info("Calculating results....")
 
     mfile_results = join(save_dir, "results.m")
     spm_mat = join(save_dir, "SPM.mat")
@@ -122,28 +137,30 @@ def run_2sample_ttest_spm(spm_path,save_dir,
     spm.generate_mfile_contrast(spm_path, mfile_results, spm_mat, contrast_name = contrast_name, contrast = contrast)
     processor.run_matlab_command(mfile_results)
 
-    print("Converting results to Cohens d....")
+    logger.info("Converting results to Cohens d....")
 
     out_t_values = join(save_dir, "spmT_0001.nii")
     out_cohens = join(save_dir, "cohens_d.nii")
 
     utils.spm_map_2_cohens_d(out_t_values, out_cohens, len_1 = len(group1), len_2 = len(group2))
 
-    print("Calculating thresholds for Cohens d (FDR corrected ....")
+    logger.info("Calculating thresholds for Cohens d (FDR corrected ....")
     t_thres, cohens_d_thres = utils.get_fdr_thresholds_from_spmt(out_t_values, n1 = len(group1), n2 = len(group2))
-    print(t_thres,cohens_d_thres)
+    logger.info(f"Thresholds: t={t_thres}, d={cohens_d_thres}")
 
-def run_2sample_ttest_cat12_new_tiv_model(spm_path, save_dir,
-        group1: list,
-        group2: list,
-        group1_ages: list,
-        group2_ages: list,
-        group1_tivs: list,
-        group2_tivs: list,
-        mask: str = False,
-        contrast_name: str = "contrast",
-        contrast: str = "[1 -1 0 0]",
-        ):
+def run_2sample_ttest_cat12_new_tiv_model(
+    save_dir: str,
+    group1: List[str],
+    group2: List[str],
+    group1_ages: List[float],
+    group2_ages: List[float],
+    group1_tivs: List[float],
+    group2_tivs: List[float],
+    spm_path: Optional[str] = None,
+    mask: Optional[str] = None,
+    contrast_name: str = "contrast",
+    contrast: str = "[1 -1 0 0]",
+) -> None:
     """
     Executes a two-sample voxel-wise t-test in SPM using the CAT12 New TIV model, computes
     Cohen’s d maps, and estimates FDR-corrected thresholds for Cohen’s d.
@@ -200,12 +217,18 @@ def run_2sample_ttest_cat12_new_tiv_model(spm_path, save_dir,
         Additionally, FDR‐corrected thresholds for both t-values and Cohen’s d are printed.
     """
 
+    if spm_path is None:
+        spm_path = config.spm_path
+        
+    if spm_path is None:
+         raise ValueError("SPM path is not configured.")
+
     if exists(save_dir):
         shutil.rmtree(save_dir)
 
     os.makedirs(save_dir)
 
-    print("Creating SPM model....")
+    logger.info("Creating SPM model....")
 
     mfile_model = join(save_dir, "model_cat12.m")
 
@@ -214,16 +237,16 @@ def run_2sample_ttest_cat12_new_tiv_model(spm_path, save_dir,
 
     processor.run_matlab_command(mfile_model)
 
-    print("Estimating model....")
+    logger.info("Estimating model....")
 
     mfile_estimate = join(save_dir, "estimate.m")
     spm_mat = join(save_dir, "SPM.mat")
 
-    spm.generate_mfile_estimate_model(mfile_estimate, spm_mat)
+    spm.generate_mfile_estimate_model(spm_path, mfile_estimate, spm_mat)
 
     processor.run_matlab_command(mfile_model)
 
-    print("Calculating results....")
+    logger.info("Calculating results....")
 
     mfile_results = join(save_dir, "results.m")
     spm_mat = join(save_dir, "SPM.mat")
@@ -231,16 +254,16 @@ def run_2sample_ttest_cat12_new_tiv_model(spm_path, save_dir,
     spm.generate_mfile_contrast(spm_path, mfile_results, spm_mat, contrast_name = contrast_name, contrast = contrast)
     processor.run_matlab_command(mfile_model)
 
-    print("Converting results to Cohens d....")
+    logger.info("Converting results to Cohens d....")
 
     out_t_values = join(save_dir, "spmT_0001.nii")
     out_cohens = join(save_dir, "cohens_d.nii")
 
     utils.spm_map_2_cohens_d(out_t_values, out_cohens, len_1 = len(group1), len_2 = len(group2))
 
-    print("Calculating thresholds for Cohens d (FDR corrected ....")
+    logger.info("Calculating thresholds for Cohens d (FDR corrected ....")
     t_thres, cohens_d_thres = utils.get_fdr_thresholds_from_spmt(out_t_values, n1 = len(group1), n2 = len(group2))
-    print(t_thres,cohens_d_thres)
+    logger.info(f"Thresholds: t={t_thres}, d={cohens_d_thres}")
 
 def run_2sample_ttest_atlas(group1: list, group2: list, atlas_path, output_path, operation = "mean"):
 
@@ -293,7 +316,6 @@ def run_2sample_ttest_atlas(group1: list, group2: list, atlas_path, output_path,
     pvals_img = nib.Nifti1Image(p_vals,atlas_img.affine, atlas_img.header)
     nib.save(pvals_img,join(output_path,'p_values.nii'))
 
-
 def run_2sample_anova_with_covariate_atlas(group1, group2, group1_covar, group2_covar, atlas_path, output_path, operation="mean"):
   
     atlas_img = nib.load(atlas_path)
@@ -330,6 +352,7 @@ def run_2sample_anova_with_covariate_atlas(group1, group2, group1_covar, group2_
         })
 
         df['Group'] = df['Group'].astype('category')
+        import statsmodels.api as sm
         X = sm.add_constant(pd.get_dummies(df[["Group", "age"]], drop_first=True))
         model = sm.OLS(df["value"], X).fit()
         f_test = model.f_test("Group[T.1]")

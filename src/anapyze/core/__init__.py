@@ -25,12 +25,7 @@ from .processor import (
     synthstrip_skull_striping_freesurfer,
 )
 
-from .container_processor import (
-    run_cat12_container,
-    run_cat12_segmentation,
-    check_container_availability,
-    setup_container_environment,
-)
+
 from .utils import (
     check_input_image_shape,
     change_image_dtype,
@@ -66,11 +61,7 @@ __all__ = [
     "recon_all_freesurfer",
     "recon_all_freesurfer_whole_cohort",
     "synthstrip_skull_striping_freesurfer",
-    # from container_processor.py
-    "run_cat12_container",
-    "run_cat12_segmentation", 
-    "check_container_availability",
-    "setup_container_environment",
+
     # from utils.py
     "check_input_image_shape",
     "change_image_dtype",
@@ -85,5 +76,5 @@ __all__ = [
     "spm_map_2_cohens_d",
     "get_fdr_thresholds_from_spmt",
     "get_tiv_from_cat12_xml_report",
-    "get_weighted_average_iqrs_from_cmap12_xml_report",
+    "get_weighted_average_iqrs_from_cat12_xml_report",
 ]

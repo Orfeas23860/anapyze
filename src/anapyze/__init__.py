@@ -10,5 +10,19 @@ This package exposes:
 from .core import *
 from .analysis import *
 from .io import *
+from .config import config
 
-__all__ = ['core', 'analysis', 'io']
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=config.log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    filename=config.log_file,
+    filemode='a'
+)
+
+# Create a logger for the package
+logger = logging.getLogger(__name__)
+
+__all__ = ['core', 'analysis', 'io', 'config']
